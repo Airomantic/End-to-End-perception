@@ -372,11 +372,12 @@ class FuturePredictionDataset(torch.utils.data.Dataset):
 
         # vm_msgs = self.nusc_can.get_messages(ref_scene['name'], 'vehicle_monitor')
         # vm_uts = [msg['utime'] for msg in vm_msgs]
+        # 主要是通过 CAN bus 的一个信息去得到一些状态量
         pose_msgs = self.nusc_can.get_messages(ref_scene['name'],'pose')
         pose_uts = [msg['utime'] for msg in pose_msgs]
         steer_msgs = self.nusc_can.get_messages(ref_scene['name'], 'steeranglefeedback')
         steer_uts = [msg['utime'] for msg in steer_msgs]
-
+        # 根据当前帧的这个时间戳，然后把当前帧所对应的这个位置的一个信息，还有 steer 所对应的这种数据去取出来
         ref_utime = rec['timestamp']
         # vm_index = locate_message(vm_uts, ref_utime)
         # vm_data = vm_msgs[vm_index]
@@ -393,32 +394,33 @@ class FuturePredictionDataset(torch.utils.data.Dataset):
         # steering = np.deg2rad(vm_data["steering"])
         steering = steer_data["value"]
 
-        location = self.scene2map[ref_scene['name']]
+        location = self.scene2map[ref_scene['name']] # 当前 steer 信息相对应的这个地图的一个信息
         # flip x axis if in left-hand traffic (singapore)
         flip_flag = True if location.startswith('singapore') else False
         if flip_flag:
             steering *= -1
-        Kappa = 2 * steering / 2.588
+        Kappa = 2 * steering / 2.588  # 曲率
 
-        # initial state
-        T0 = np.array([0.0, 1.0])  # define front
-        N0 = np.array([1.0, 0.0]) if Kappa <= 0 else np.array([-1.0, 0.0])  # define side
+        # initial state  # 定义了一些初始的状态量
+        T0 = np.array([0.0, 1.0])  # define front  # 切向量
+        N0 = np.array([1.0, 0.0]) if Kappa <= 0 else np.array([-1.0, 0.0])  # define side  # 法向量
 
         t_start = 0  # second
         t_end = 4 * self.SAMPLE_INTERVAL  # second
         t_interval = self.SAMPLE_INTERVAL / 10
         tt = np.arange(t_start, t_end + t_interval, t_interval)
-        sampled_trajectories_fine = trajectory_sampler.sample(v0, Kappa, T0, N0, tt, self.n_samples)
+        sampled_trajectories_fine = trajectory_sampler.sample(v0, Kappa, T0, N0, tt, self.n_samples)  # self.n_samples采样的轨迹点的个数
         sampled_trajectories = sampled_trajectories_fine[:, ::10]
         return sampled_trajectories
 
     def voxelize_hd_map(self, rec):
-        dx, bx, _ = gen_dx_bx(self.LIFT_X_BOUND, self.LIFT_Y_BOUND, self.LIFT_Z_BOUND)
-        stretch = [self.LIFT_X_BOUND[1], self.LIFT_Y_BOUND[1]]
+        dx, bx, _ = gen_dx_bx(self.LIFT_X_BOUND, self.LIFT_Y_BOUND, self.LIFT_Z_BOUND) # XYZ 的这个范围和分辨率去构造了两个变量
+        stretch = [self.LIFT_X_BOUND[1], self.LIFT_Y_BOUND[1]]  # 50 50
         dx, bx = dx[:2].numpy(), bx[:2].numpy()
-
+        # 获得自车位置变化
         egopose = self.nusc.get('ego_pose', self.nusc.get('sample_data', rec['data']['LIDAR_TOP'])['ego_pose_token'])
-        map_name = self.scene2map[self.nusc.get('scene', rec['scene_token'])['name']]
+        # 当前的这个数据的场景下的一个地图系地图的地图是哪个？
+        map_name = self.scene2map[self.nusc.get('scene', rec['scene_token'])['name']] # 场景跟地图的对应关系进行存储
 
         rot = Quaternion(egopose['rotation']).rotation_matrix
         rot = np.arctan2(rot[1,0], rot[0,0]) # in radian
@@ -427,10 +429,10 @@ class FuturePredictionDataset(torch.utils.data.Dataset):
         box_coords = (
             center[0],
             center[1],
-            stretch[0]*2,
+            stretch[0]*2,  # 去得到自车前后左右100米范围的地图
             stretch[1]*2
         ) # (x_center, y_center, width, height)
-        canvas_size = (
+        canvas_size = (  # 地图模版的尺寸 200 × 200
                 int(self.LIFT_X_BOUND[1] * 2 / self.LIFT_X_BOUND[2]),
                 int(self.LIFT_Y_BOUND[1] * 2 / self.LIFT_Y_BOUND[2])
         )
@@ -484,20 +486,20 @@ class FuturePredictionDataset(torch.utils.data.Dataset):
 
         egopose_cur = get_global_pose(rec, self.nusc, inverse=True)
 
-        for i in range(n_output+1):
-            index = ref_index + i
+        for i in range(n_output+1):  # 4+1=五条轨迹去作为他的那个未来轨迹
+            index = ref_index + i  # 当前帧加上未来的4 帧
             if index < len(self.ixes):
                 rec_future = self.ixes[index]
 
                 egopose_future = get_global_pose(rec_future, self.nusc, inverse=False)
-
+                # 将未来帧的这个轨迹从转变到当前帧的这个自车坐标系下
                 egopose_future = egopose_cur.dot(egopose_future)
                 theta = quaternion_yaw(Quaternion(matrix=egopose_future))
 
                 origin = np.array(egopose_future[:3, 3])
 
-                gt_trajectory[i, :] = [origin[0], origin[1], theta]
-
+                gt_trajectory[i, :] = [origin[0], origin[1], theta] # 然后去构造一个未来的轨迹，并算了一个他们的未来的一个heading角
+        # 未来轨迹最后一点所在的一个位置判断它是左转了，右转了还是在前进
         if gt_trajectory[-1][0] >= 2:
             command = 'RIGHT'
         elif gt_trajectory[-1][0] <= -2:
@@ -598,8 +600,8 @@ class FuturePredictionDataset(torch.utils.data.Dataset):
             data['hdmap'].append(hd_map_feature)
             data['indices'].append(index_t)
 
-            if i == 2:
-                gt_trajectory, command = self.get_gt_trajectory(rec, index_t)
+            if i == 2:  # 7 帧时序数据里面的第二帧就会作为当前数据去计算它一个未来轨迹和一个未来的一个信号
+                gt_trajectory, command = self.get_gt_trajectory(rec, index_t)  # 得到一个采样的轨迹
                 data['gt_trajectory'] = torch.from_numpy(gt_trajectory).float()
                 data['command'] = command
                 trajs = self.get_trajectory_sampling(rec)
@@ -612,6 +614,8 @@ class FuturePredictionDataset(torch.utils.data.Dataset):
                 data[key] = torch.cat(value, dim=0)
 
         data['target_point'] = torch.tensor([0., 0.])
+        # 怎么去构造每个实例的中心点instance_centerness，偏移量instance_offset和它未来的一个轨迹instance_flow
+        # 最终就是会得到每个实例在当前帧的这个中心点....
         instance_centerness, instance_offset, instance_flow = convert_instance_mask_to_center_and_offset_label(
             data['instance'], data['future_egomotion'],
             num_instances=len(instance_map), ignore_index=255, subtract_egomotion=True,

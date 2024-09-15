@@ -60,7 +60,7 @@ def sample(v0, Kappa, T0, N0, tt, M, possibility = None):
         center[0] + radius * np.cos(circle_phis),
         center[1] + radius * np.sin(circle_phis),
     ]) #480, 41, 2
-
+    # 加了一些动力学的约束，就是根据曲率什么的，以及补偿之类的一些计算公式
     # rotate thetas, wrap
     circle_thetas = L/radius if Krappa >= 0 else -L/radius  # 圆心角
     circle_thetas = (circle_thetas + np.pi) % (2 * np.pi) - np.pi #(480,41)

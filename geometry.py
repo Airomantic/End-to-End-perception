@@ -76,11 +76,11 @@ def get_global_pose(rec, nusc, inverse=False):
     if inverse is False:
         global_from_ego = transform_matrix(sd_ep["translation"], Quaternion(sd_ep["rotation"]), inverse=False)
         ego_from_sensor = transform_matrix(sd_cs["translation"], Quaternion(sd_cs["rotation"]), inverse=False)
-        pose = global_from_ego.dot(ego_from_sensor)
+        pose = global_from_ego.dot(ego_from_sensor)  # inverse=true 世界坐标系到传感器的这么一个变化矩阵
     else:
         sensor_from_ego = transform_matrix(sd_cs["translation"], Quaternion(sd_cs["rotation"]), inverse=True)
         ego_from_global = transform_matrix(sd_ep["translation"], Quaternion(sd_ep["rotation"]), inverse=True)
-        pose = sensor_from_ego.dot(ego_from_global)
+        pose = sensor_from_ego.dot(ego_from_global)  # inverse=False 传感器到世界坐标系的这么一个转变矩阵
     return pose
 
 def invert_matrix_egopose_numpy(egopose):

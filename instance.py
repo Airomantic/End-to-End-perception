@@ -15,15 +15,17 @@ def convert_instance_mask_to_center_and_offset_label(instance_img, future_egomot
     center_label = torch.zeros(seq_len, 1, h, w)
     offset_label = ignore_index * torch.ones(seq_len, 2, h, w)
     future_displacement_label = ignore_index * torch.ones(seq_len, 2, h, w)
-    # x is vertical displacement, y is horizontal displacement
+    # x is vertical displacement, y is horizontal displacement  # 生成坐标的一些变量
     x, y = torch.meshgrid(torch.arange(h, dtype=torch.float), torch.arange(w, dtype=torch.float)) #生成坐标
 
     if subtract_egomotion:
         future_egomotion_inv = mat2pose_vec(pose_vec2mat(future_egomotion).inverse())
-
+    # future_egomotion_inv取逆 能得到从 T1 到 T0 时刻的
     # Compute warped instance segmentation
     warped_instance_seg = {}
     for t in range(1, seq_len):
+        # 利用这个转变矩阵去将未来的这个seq_len，就是刚才我们上传的视频片段的那个7，也就是说把未来就是 instance 去改变到当前帧上
+        # future_egomotion_inv[t - 1]从未来转当前帧的这个矩阵转换
         warped_inst_t = warp_features(instance_img[t].unsqueeze(0).unsqueeze(1).float(),
                                       future_egomotion_inv[t - 1].unsqueeze(0), mode='nearest',
                                       spatial_extent=spatial_extent)
@@ -35,6 +37,8 @@ def convert_instance_mask_to_center_and_offset_label(instance_img, future_egomot
         prev_yc = None
         prev_mask = None
         for t in range(seq_len):
+            # 利用这个转变矩阵去将未来的这个seq_len，就是刚才我们上传的视频片段的那个7，也就是说把未来就是 instance 去改变到当前帧上
+            # 从未来转当前帧的这个图标转换
             instance_mask = (instance_img[t] == instance_id)
             if instance_mask.sum() == 0:
                 # this instance is not in this frame
@@ -42,15 +46,16 @@ def convert_instance_mask_to_center_and_offset_label(instance_img, future_egomot
                 prev_yc = None
                 prev_mask = None
                 continue
-
+            
+            # 障碍物中心点
             xc = x[instance_mask].mean().round().long()
             yc = y[instance_mask].mean().round().long()
-
+            # 对每一个位置去算一个根据中心点的这一个偏音量，只保留instance 所在位置的
             off_x = xc - x
             off_y = yc - y
             g = torch.exp(-(off_x ** 2 + off_y ** 2) / sigma ** 2)
             center_label[t, 0] = torch.maximum(center_label[t, 0], g)
-            offset_label[t, 0, instance_mask] = off_x[instance_mask]
+            offset_label[t, 0, instance_mask] = off_x[instance_mask]  # 就是他的这个偏移量，因为有障碍物的地方才的偏移量才有意义。
             offset_label[t, 1, instance_mask] = off_y[instance_mask]
 
             if prev_xc is not None:
@@ -59,7 +64,7 @@ def convert_instance_mask_to_center_and_offset_label(instance_img, future_egomot
                 # if subtract_egomotion:
                 #     cur_pt = warp_points(cur_pt, future_egomotion_inv[t - 1])
                 # cur_pt = cur_pt.squeeze(0)
-
+                # 障碍物在转变到当前帧之后的一个中心点的一个位置，然后就能得到这个障碍物它是怎么一个运动的？
                 warped_instance_mask = warped_instance_seg[t] == instance_id
                 if warped_instance_mask.sum() > 0:
                     warped_xc = x[warped_instance_mask].mean().round()
