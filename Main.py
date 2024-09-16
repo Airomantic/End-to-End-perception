@@ -18,6 +18,7 @@ def prepare_future_labels(batch):
     gt_trajectory = batch['gt_trajectory']
 
     # present frame hd map gt
+    # 以第二帧为坐标系去对全局的数据进行可视化
     labels['hdmap'] = hdmap_labels[:, receptive_field - 1].long().contiguous()
 
     # gt trajectory
@@ -27,7 +28,7 @@ def prepare_future_labels(batch):
     segmentation_labels_past = cumulative_warp_features(
         segmentation_labels[:, :receptive_field].float(),
         future_egomotion[:, :receptive_field],
-        mode='nearest', spatial_extent=spatial_extent,
+        mode='nearest', spatial_extent=spatial_extent,  # spatial_extent 空间分布 50 * 50 数值
     ).long().contiguous()[:, :-1]
     segmentation_labels = cumulative_warp_features_reverse(
         segmentation_labels[:, (receptive_field - 1):].float(),
@@ -130,7 +131,7 @@ for batch in trainloader:
     # Warp labels
     labels = prepare_future_labels(batch)
     visualisation_video = visualise_output(labels)
-    save_res = np.transpose(visualisation_video[0], (0, 3, 2, 1))
+    save_res = np.transpose(visualisation_video[0], (0, 3, 2, 1))    # 通道处理，它变成一个由 7 帧视频去组成的一个动图
     imageio.mimsave('test.gif', save_res, fps=2)
 #
 #     return trainloader

@@ -107,18 +107,18 @@ def get_obj3d_from_annotation(ann, ego_data, calib_data):
     # 2. 3D框
     # global frame
     center = np.array(ann['translation'])
-    orientation = np.array(ann['rotation'])
-    # 从global frame转换到ego vehicle frame
-    quaternion = Quaternion(ego_data['rotation']).inverse
+    orientation = np.array(ann['rotation'])   # 在全局坐标系下的这个框的一个平移矩阵（旋转矩阵），也就是它的那个四元素
+    # 从global frame转换到ego vehicle frame  ## 所有的数据从世界坐标系下去转到一个主车坐标系
+    quaternion = Quaternion(ego_data['rotation']).inverse 
     center -= np.array(ego_data['translation'])
     center = np.dot(quaternion.rotation_matrix, center)
     orientation = quaternion * orientation
-    # 从ego vehicle frame转换到sensor frame
+    # 从ego vehicle frame转换到sensor frame  # 从主车坐标系去转到每个图像的相机坐标系下
     quaternion = Quaternion(calib_data['rotation']).inverse
     center -= np.array(calib_data['translation'])
     center = np.dot(quaternion.rotation_matrix, center)
     orientation = quaternion * orientation
-    # 根据中心点和旋转量生成3D框
+    # 根据中心点和旋转量生成3D框  ## 根据刚才那个平均值能得到框的一个中心点，然后跟它的旋转量去生成这个框
     x, y, z = center
     w, l, h = ann['size']
     x_corners = l / 2 * np.array([-1, 1, 1, -1, -1, 1, 1, -1])
@@ -139,7 +139,7 @@ def get_obj3d_from_annotation(ann, ego_data, calib_data):
 
     return obj_ann
 
-
+    # 用内参矩阵去将相机坐标系下的框去转变到像素坐标系上
 def project_obj2image(obj3d_list, intrinsic):
     obj2d_list = list()
 
@@ -280,7 +280,7 @@ def plot_annotation_info(lidar_bev, camera_img, obj_list):
                 # 侧边线
                 cv2.line(camera_img, (box[0, i], box[1, i]), (box[0, i + 4], box[1, i + 4]), color, thickness=thickness[1])
 
-
+    # 可视化激光雷达（ STP 3 算法是没有的）
 def visualize_one_sample(nusc,
                          sample,
                          results=None,
@@ -341,7 +341,7 @@ def visualize_one_sample(nusc,
             for ann in anns_info:
                 if int(ann['visibility_token']) < visible_level:
                     continue
-                obj = get_obj3d_from_annotation(ann, ego_data, calib_data)
+                obj = get_obj3d_from_annotation(ann, ego_data, calib_data) # 3D 框是在相机坐标系下，但是再画到图像上还需要一个变化，就是怎么样把它再转变到像素坐标系上
                 if obj is not None:
                     obj3d_list.append(obj)
         obj2d_list = project_obj2image(obj3d_list, calib_data['camera_intrinsic'])

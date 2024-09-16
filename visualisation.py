@@ -15,14 +15,14 @@ def flow_to_image(flow: np.ndarray, autoscale: bool = False) -> np.ndarray:
     Applies colour map to flow which should be a 2 channel image tensor HxWx2. Returns a HxWx3 numpy image
     Code adapted from: https://github.com/liruoteng/FlowNet/blob/master/models/flownet/scripts/flowlib.py
     """
-    u = flow[0, :, :]
-    v = flow[1, :, :]
+    u = flow[0, :, :]   # x方向的距离
+    v = flow[1, :, :]   # y方向的距离
 
     # Convert to polar coordinates
-    rad = np.sqrt(u ** 2 + v ** 2)
+    rad = np.sqrt(u ** 2 + v ** 2)   # 欧式距离
     maxrad = np.max(rad)
 
-    # Normalise flow maps
+    # Normalise flow maps  #归一化 所有的数值变到 0 ~ 1 区间
     if autoscale:
         u /= maxrad + np.finfo(float).eps
         v /= maxrad + np.finfo(float).eps
@@ -234,7 +234,7 @@ def visualise_output(labels):
         center_plot = make_contour(center_plot)
 
         offset_plot = labels['offset'][b, t].cpu().numpy()
-        offset_plot[:, semantic_seg[b, t] != 1] = 0
+        offset_plot[:, semantic_seg[b, t] != 1] = 0   # 没有物体的时候，offset偏差为0
         offset_plot = flow_to_image(offset_plot)[::-1, ::-1]
         offset_plot = make_contour(offset_plot)
 
@@ -246,7 +246,7 @@ def visualise_output(labels):
 
         planning_plot = plot_planning(labels['hdmap'][b], labels['gt_trajectory'][b])
         planning_plot = make_contour(planning_plot)
-
+        # 对所有图进行拼接
         out_t.append(np.concatenate([instance_plot, future_flow_plot,
                                      semantic_plot, center_plot, offset_plot, pedestrian_plot, planning_plot], axis=0))
 
@@ -273,7 +273,7 @@ def visualise_output(labels):
 
         video.append(out_t)
 
-    # Shape (B, T, C, H, W)
+    # Shape (B, T, C, H, W)  # 视频矩阵（batch, 视频片段长度, 通道, 高度, 宽度)
     video = np.stack(video)[None]
     return video
 

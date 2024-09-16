@@ -237,7 +237,7 @@ def warp_features(x, flow, mode='nearest', spatial_extent=None):
 
     return warped_x
 
-
+# flow相邻两帧的位置变化，t0到t1时刻的转笔关系
 def cumulative_warp_features(x, flow, mode='nearest', spatial_extent=None):
     """ Warps a sequence of feature maps by accumulating incremental 2d flow.
 
@@ -256,15 +256,16 @@ def cumulative_warp_features(x, flow, mode='nearest', spatial_extent=None):
     sequence_length = x.shape[1]
     if sequence_length == 1:
         return x
-
+    # 基于六自由度Vector 的这种转变关系去转变成了一个转变矩阵
     flow = pose_vec2mat(flow)
 
     out = [x[:, -1]]
     cum_flow = flow[:, -2]
-    for t in reversed(range(sequence_length - 1)):
+    for t in reversed(range(sequence_length - 1)):  # 倒序：t1帧到t0帧
+        # 第一帧乘以第一帧转变矩阵就得到第二帧
         out.append(warp_features(x[:, t], mat2pose_vec(cum_flow), mode=mode, spatial_extent=spatial_extent))
         # @ is the equivalent of torch.bmm
-        cum_flow = flow[:, t - 1] @ cum_flow
+        cum_flow = flow[:, t - 1] @ cum_flow  # 累乘：第0帧到第n帧
 
     return torch.stack(out[::-1], 1)
 
